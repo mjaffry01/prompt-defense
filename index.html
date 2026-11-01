@@ -514,7 +514,10 @@ class Sim {
     if (this.result) return;
     this.result = res; this.endT = this.t;
     this.log(res === 'saved' ? 'TOWER SAFE — missile destroyed.' : 'TOWER DESTROYED — the missile got through.', res === 'saved' ? 'good' : 'bad');
-    if (res === 'hit') this.booms.push({ x: TOWER.x, y: TOWER.y, r: 70, t: 0, tower: true });
+    if (res === 'hit') {
+      this.booms.push({ x: TOWER.x, y: TOWER.y, r: 70, t: 0, tower: true });
+      for (const it of this.ints) if (it.state === 'wait') this.log('Interceptor #' + (it.idx + 1) + ' never launched: it was set to launch at ' + r1(it.cfg.launch_t) + ' s, after the missile arrived.', 'miss');
+    }
   }
   pickTarget(it) {
     const c = it.cfg, cands = [], r = this.real;
@@ -1543,6 +1546,15 @@ function timelineHTML(list) {
   const marks = list.map((i, k) => { const key = i.launch_t.toFixed(1); const dup = seen[key] = (seen[key] || 0) + 1; return `<span class="mk" style="left:calc(${Math.min(96, i.launch_t / span * 100)}% + ${(dup - 1) * 15}px)" title="Shot ${k + 1} launches at ${r1(i.launch_t)} s">${k + 1}</span>`; }).join('');
   return `<div class="tl" role="img" aria-label="Launch timeline"><div class="trk">${marks}<span class="imp" style="left:${Math.min(98, eta / span * 100)}%" title="The missile arrives at about ${r1(eta)} s"></span></div><div class="ax"><span>0 s</span><span>missile arrives at about ${r1(eta)} s</span></div></div>`;
 }
+function lateHTML(list) {
+  const m = G.lastCtx && G.lastCtx.missile; if (!m) return '';
+  const eta = etaOf(m);
+  return list.map((i, k) => {
+    const asked = i.asked_t ? ` The order asked for ${r1(i.asked_t)} s, but the latest launch allowed is 14 s.` : '';
+    if (i.launch_t >= eta) return `<p class="tag-warn">Shot ${k + 1} launches at ${r1(i.launch_t)} s, but the missile reaches the tower at about ${r1(eta)} s, so it never fires.${asked} A bare number like “30” reads as seconds: say what it means, for example “launch at 0 s” or “speed 300”.</p>`;
+    return asked ? `<p class="tag-warn">Shot ${k + 1}:${asked}</p>` : '';
+  }).join('');
+}
 function readoutHTML() {
   const R = G.readout; if (!R) return '';
   const unsaid = [...new Set(R.list.flatMap(relDefaults))];
@@ -1554,6 +1566,7 @@ function readoutHTML() {
     ${unsaid.length ? `<p class="tag-warn">Amber means the order never settled it, or the output was cut off before it: ${esc(unsaid.map(x => x.replace('_', ' ')).join(', '))}.</p>` : ''}
     ${P && P.truncated ? `<p class="tag-warn">The output hit the ${P.maxTok}-token limit, so later shots are unfinished or missing.</p>` : ''}
     ${P && P.stopped ? `<p class="tag-warn">Your stop sequence ended the output before “${esc(P.stopped)}”.</p>` : ''}
+    ${lateHTML(R.list)}
     ${R.dropped.length ? `<p class="tag-warn">Over budget: the last ${R.dropped.length} shot${R.dropped.length > 1 ? 's were' : ' was'} scrapped.</p>` : ''}
     ${R.ignored ? `<p class="fine">Not turned into anything: ${esc(R.ignored)}</p>` : ''}
     <div class="budget ${R.cost > R.budget ? 'over' : ''}"><div style="width:${Math.min(100, R.cost / R.budget * 100)}%"></div></div>
@@ -1705,6 +1718,7 @@ function parseShots(text, truncated) {
     const missing = I_FIELDS.filter(f => !(f in s.vals));
     const it = normInterceptor(Object.assign({}, s.vals, { defaulted: s.dflt.concat(missing) }));
     it.cut = (truncated && i === slots.length - 1) ? missing : [];
+    if (s.vals.launch_t > 14) it.asked_t = s.vals.launch_t;
     return it;
   });
   if (!list.length) {
