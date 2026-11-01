@@ -1,0 +1,13 @@
+name = "prompt-defense-proxy"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# Set these as secrets, not here:
+#   npx wrangler secret put CLASS_PASSCODE
+#   npx wrangler secret put ANTHROPIC_API_KEY
+#   npx wrangler secret put OPENAI_API_KEY
+[vars]
+ALLOWED_MODELS = '{"claude-haiku-5-5":"anthropic"}'
+ALLOWED_ORIGINS = "*"
+MAX_TOKENS_CAP = "1500"
+RATE_PER_MIN = "30"
