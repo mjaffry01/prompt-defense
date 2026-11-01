@@ -953,7 +953,7 @@ const PD = Object.assign({ proxyUrl: '', models: [], allowBYOK: true, defaultEng
 const PROVIDERS = {
   anthropic: { label: 'Anthropic', family: 'anthropic', base: 'https://api.anthropic.com/v1', suggest: ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1'] },
   openai: { label: 'OpenAI', family: 'openai', base: 'https://api.openai.com/v1', suggest: [] },
-  openrouter: { label: 'OpenRouter (many models)', family: 'openai', base: 'https://openrouter.ai/api/v1', suggest: [] },
+  openrouter: { label: 'OpenRouter (many models)', family: 'openai', base: 'https://openrouter.ai/api/v1', suggest: ['anthropic/claude-haiku-5.5', 'anthropic/claude-sonnet-5.5', 'google/gemma-4-31b-it:free', 'nvidia/nemotron-3.5-lightning:free'] },
   compat: { label: 'Other OpenAI-compatible API', family: 'openai', base: '', suggest: [] },
   proxy: { label: 'Class server', family: 'proxy', base: '', suggest: [] },
 };
@@ -2095,13 +2095,13 @@ const PSUB = { anthropic: 'Claude models', openai: 'GPT models', openrouter: 'Ma
 const KEYGUIDE = {
   anthropic: { prefix: 'sk-ant-', steps: ['Press the button below and sign in (or make a free account).', 'Add a little credit under <b>Billing</b>. A few dollars lasts a long time with Haiku.', 'On the <b>API keys</b> page press <b>Create key</b>, give it any name, and copy it.', 'Come back here and paste it in the box below.'], note: 'You only see the key once, so paste it before you close that page.' },
   openai: { prefix: 'sk-', steps: ['Press the button below and sign in (or make a free account).', 'Add a little credit under <b>Billing</b>.', 'Press <b>Create new secret key</b> and copy it.', 'Come back here and paste it in the box below.'], note: 'You only see the key once, so paste it before you close that page.' },
-  openrouter: { prefix: 'sk-or-', steps: ['Press the button below and sign in. Google or GitHub sign-in works.', 'Press <b>Create key</b>, give it any name, and set a small credit limit.', 'Copy the key, come back here, and paste it in the box below.'], note: 'Some OpenRouter models are free: their IDs end in <b>:free</b>. Paid models need a little credit.' },
+  openrouter: { prefix: 'sk-or-', steps: ['Press the button below and sign in. Google or GitHub sign-in works.', 'Press <b>Create key</b>, give it any name, and set a small credit limit.', 'Copy the key, come back here, and paste it in the box below.'], note: 'Some OpenRouter models are free: their IDs end in <b>:free</b>. Paid models need a little credit. Free models can be slower and have daily limits.' },
   compat: { steps: ['Open your provider’s dashboard and find its <b>API keys</b> page.', 'Copy the API address (it usually ends in /v1) into Base URL.', 'Create a key, copy it, and paste it below.'] },
 };
 const MODELLINK = { anthropic: 'https://docs.anthropic.com/en/docs/about-claude/models', openai: 'https://platform.openai.com/docs/models', openrouter: 'https://openrouter.ai/models' };
 const MHINT = { openai: 'Copy a model ID from the models page', openrouter: 'Looks like company/model-name. Copy one from the models page', compat: 'Type the model ID from your provider’s docs' };
-const MNAME = { 'claude-haiku-5-5': 'Haiku: fast, cheapest', 'claude-sonnet-5-5': 'Sonnet: smarter', 'claude-opus-5-5': 'Opus: strongest', 'claude-fable-5-1': 'Fable' };
-const DEFMODEL = { anthropic: 'claude-haiku-5-5' };
+const MNAME = { 'claude-haiku-5-5': 'Haiku: fast, cheapest', 'claude-sonnet-5-5': 'Sonnet: smarter', 'claude-opus-5-5': 'Opus: strongest', 'claude-fable-5-1': 'Fable', 'anthropic/claude-haiku-5.5': 'Claude Haiku: fast, cheap', 'anthropic/claude-sonnet-5.5': 'Claude Sonnet: smarter', 'google/gemma-4-31b-it:free': 'Gemma: free', 'nvidia/nemotron-3.5-lightning:free': 'Nemotron: free' };
+const DEFMODEL = { anthropic: 'claude-haiku-5-5', openrouter: 'anthropic/claude-haiku-5.5' };
 function keyProvider(k) {
   if (/^sk-ant-/.test(k)) return 'anthropic';
   if (/^sk-or-/.test(k)) return 'openrouter';
