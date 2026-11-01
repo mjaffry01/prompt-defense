@@ -953,7 +953,7 @@ const PD = Object.assign({ proxyUrl: '', models: [], allowBYOK: true, defaultEng
 const PROVIDERS = {
   anthropic: { label: 'Anthropic', family: 'anthropic', base: 'https://api.anthropic.com/v1', suggest: ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1'] },
   openai: { label: 'OpenAI', family: 'openai', base: 'https://api.openai.com/v1', suggest: [] },
-  openrouter: { label: 'OpenRouter (many models)', family: 'openai', base: 'https://openrouter.ai/api/v1', suggest: ['anthropic/claude-haiku-5.5', 'anthropic/claude-sonnet-5.5', 'google/gemma-4-31b-it:free', 'nvidia/nemotron-3.5-lightning:free'] },
+  openrouter: { label: 'OpenRouter (many models)', family: 'openai', base: 'https://openrouter.ai/api/v1', suggest: ['anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5', 'anthropic/claude-haiku-5.5', 'google/gemma-4-31b-it:free'] },
   compat: { label: 'Other OpenAI-compatible API', family: 'openai', base: '', suggest: [] },
   proxy: { label: 'Class server', family: 'proxy', base: '', suggest: [] },
 };
@@ -1063,6 +1063,7 @@ function errCopy(e) {
   if (c === 'auth') return 'The provider rejected the key or passcode. Open “Connect a model” and check it.';
   if (c === 'rate_limited') return 'Too many requests in a short time. Wait a few seconds, then try again.';
   if (c === 'network') return 'Couldn’t reach the provider. Check your connection and the key. Some providers block calls from a browser, and then you need a class server.';
+  if (c === 'empty') return e.truncated ? 'The model used all its tokens before writing a plan (some models “think” first). Raise Max tokens or pick Claude Sonnet in Connect a model.' : 'The model sent back an empty answer. Send the order again, or pick Claude Sonnet in Connect a model.';
   if (c === 'bad_json') return 'The controller answered, but not in a format the battery could run. Send the same order again.';
   if (typeof c === 'string' && c.indexOf('http_') === 0) return 'The provider returned an error: ' + (e.message || c) + '.';
   return 'The controller didn’t answer (' + (c || 'unknown error') + '). Send the order again.';
@@ -1676,12 +1677,13 @@ Write one SHOT block per interceptor, at most 6. If neither the order nor the do
 
 ${DEFENSE_FIELDS}`;
 function liveSystem(doctrine) { return FIRMWARE + (doctrine ? '\n\nSTANDING DOCTRINE (the commander’s system prompt; applies to every order unless the order overrides it):\n' + doctrine : ''); }
+function liveUser(order) { return 'OPERATOR ORDER:\n"""\n' + order + '\n"""\nCarry out every detail of this order exactly as written: the number of shots, each timing, guidance, speed, blast, target and aim. Do not add, drop or change anything it states. Reply with the SHOT blocks only.'; }
 function parseStops(s) { return String(s || '').split(',').map(x => x.trim()).filter(Boolean); }
 function parseShots(text, truncated) {
   const slots = [], tokens = [];
   let cur = null;
   for (const raw of String(text || '').replace(/```[a-z]*/gi, '').split(/\r?\n/)) {
-    const line = raw.replace(/^[\s>*\-•]+/, '').trim();
+    const line = raw.replace(/^[\s>*\-•#`]+/, '').replace(/^\d+[.)]\s+(?=[a-z])/i, '').replace(/[*`"']/g, '').trim();
     if (!line) continue;
     if (/^SHOT\s*#?\d+/i.test(line)) {
       if (slots.length >= 6) break;
@@ -1689,6 +1691,7 @@ function parseShots(text, truncated) {
     }
     if (!cur) continue;
     const m = line.match(/^([a-z_]+)\s*[=:]\s*([A-Za-z_0-9.\-]+)(.*)$/i);
+    if (m) m[1] = m[1].replace(/^launch_time$/i, 'launch_t').replace(/^blast_radius$/i, 'blast');
     if (!m) continue;
     const f = m[1].toLowerCase();
     if (!I_FIELDS.includes(f)) continue;
@@ -1704,6 +1707,9 @@ function parseShots(text, truncated) {
     it.cut = (truncated && i === slots.length - 1) ? missing : [];
     return it;
   });
+  if (!list.length) {
+    try { const j = parseJSON(text), arr = j && (j.interceptors || j.shots); if (Array.isArray(arr) && arr.length) arr.slice(0, 6).forEach(x => { const it = normInterceptor(Object.assign({}, x, { defaulted: I_FIELDS.filter(f => !(f in x)) })); it.cut = []; list.push(it); }); } catch (e) {}
+  }
   if (!list.length) { const it = normInterceptor({ defaulted: I_FIELDS.slice() }); it.cut = truncated ? I_FIELDS.slice() : []; list.push(it); }
   return { list, tokens };
 }
@@ -1711,7 +1717,8 @@ async function liveController(order) {
   const k = G.Kmain; if (!k.lock) k.seed = randSeed();
   const ctl = new AbortController(); G.ctl = ctl;
   const p = { temperature: k.temperature, top_p: k.top_p, top_k: k.top_k, max_tokens: k.max_real, stop: parseStops(k.stop), freq: k.freq, pres: k.pres, seed: k.seed };
-  const r = await LLM.call({ system: liveSystem(k.system), user: order, p, signal: ctl.signal });
+  const r = await LLM.call({ system: liveSystem(k.system), user: liveUser(order), p, signal: ctl.signal });
+  if (!String(r.text || '').trim()) throw { code: 'empty', truncated: r.truncated };
   const parsed = parseShots(r.text, r.truncated);
   return Object.assign(parsed, { text: r.text, truncated: r.truncated, stopped: r.stopped, ms: r.ms, outTokens: r.outTokens, notes: r.notes || [], maxTok: k.max_real });
 }
@@ -2095,13 +2102,13 @@ const PSUB = { anthropic: 'Claude models', openai: 'GPT models', openrouter: 'Ma
 const KEYGUIDE = {
   anthropic: { prefix: 'sk-ant-', steps: ['Press the button below and sign in (or make a free account).', 'Add a little credit under <b>Billing</b>. A few dollars lasts a long time with Haiku.', 'On the <b>API keys</b> page press <b>Create key</b>, give it any name, and copy it.', 'Come back here and paste it in the box below.'], note: 'You only see the key once, so paste it before you close that page.' },
   openai: { prefix: 'sk-', steps: ['Press the button below and sign in (or make a free account).', 'Add a little credit under <b>Billing</b>.', 'Press <b>Create new secret key</b> and copy it.', 'Come back here and paste it in the box below.'], note: 'You only see the key once, so paste it before you close that page.' },
-  openrouter: { prefix: 'sk-or-', steps: ['Press the button below and sign in. Google or GitHub sign-in works.', 'Press <b>Create key</b>, give it any name, and set a small credit limit.', 'Copy the key, come back here, and paste it in the box below.'], note: 'Some OpenRouter models are free: their IDs end in <b>:free</b>. Paid models need a little credit. Free models can be slower and have daily limits.' },
+  openrouter: { prefix: 'sk-or-', steps: ['Press the button below and sign in. Google or GitHub sign-in works.', 'Press <b>Create key</b>, give it any name, and set a small credit limit.', 'Copy the key, come back here, and paste it in the box below.'], note: 'Some OpenRouter models are free: their IDs end in <b>:free</b>. Paid models need a little credit. Free models can be slower, have daily limits, and follow orders less exactly.' },
   compat: { steps: ['Open your provider’s dashboard and find its <b>API keys</b> page.', 'Copy the API address (it usually ends in /v1) into Base URL.', 'Create a key, copy it, and paste it below.'] },
 };
 const MODELLINK = { anthropic: 'https://docs.anthropic.com/en/docs/about-claude/models', openai: 'https://platform.openai.com/docs/models', openrouter: 'https://openrouter.ai/models' };
 const MHINT = { openai: 'Copy a model ID from the models page', openrouter: 'Looks like company/model-name. Copy one from the models page', compat: 'Type the model ID from your provider’s docs' };
-const MNAME = { 'claude-haiku-5-5': 'Haiku: fast, cheapest', 'claude-sonnet-5-5': 'Sonnet: smarter', 'claude-opus-5-5': 'Opus: strongest', 'claude-fable-5-1': 'Fable', 'anthropic/claude-haiku-5.5': 'Claude Haiku: fast, cheap', 'anthropic/claude-sonnet-5.5': 'Claude Sonnet: smarter', 'google/gemma-4-31b-it:free': 'Gemma: free', 'nvidia/nemotron-3.5-lightning:free': 'Nemotron: free' };
-const DEFMODEL = { anthropic: 'claude-haiku-5-5', openrouter: 'anthropic/claude-haiku-5.5' };
+const MNAME = { 'claude-haiku-5-5': 'Haiku: fast, cheapest', 'claude-sonnet-5-5': 'Sonnet: smarter', 'claude-opus-5-5': 'Opus: strongest', 'claude-fable-5-1': 'Fable', 'anthropic/claude-sonnet-5.5': 'Claude Sonnet: best pick', 'anthropic/claude-opus-5.5': 'Claude Opus: strongest', 'anthropic/claude-haiku-5.5': 'Claude Haiku: cheapest', 'google/gemma-4-31b-it:free': 'Gemma: free, less exact' };
+const DEFMODEL = { anthropic: 'claude-haiku-5-5', openrouter: 'anthropic/claude-sonnet-5.5' };
 function keyProvider(k) {
   if (/^sk-ant-/.test(k)) return 'anthropic';
   if (/^sk-or-/.test(k)) return 'openrouter';
